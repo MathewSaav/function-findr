@@ -1,6 +1,11 @@
 "use client";
 import { useState } from "react";
-import { FunctionEvent, VIBE_CONFIG, SOURCE_CONFIG } from "@/lib/events";
+import {
+  FunctionEvent,
+  SOURCE_CATEGORY_CONFIG,
+  SOURCE_CONFIG,
+  VIBE_CONFIG,
+} from "@/lib/events";
 
 export default function EventCard({
   event,
@@ -13,6 +18,7 @@ export default function EventCard({
 }) {
   const vibe = VIBE_CONFIG[event.vibe];
   const source = SOURCE_CONFIG[event.source];
+  const category = SOURCE_CATEGORY_CONFIG[source.category];
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -34,7 +40,7 @@ export default function EventCard({
           className="absolute top-3 left-3 text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full"
           style={{ background: source.bg, color: source.color }}
         >
-          {source.label}
+          {source.detailLabel}
         </span>
 
         {/* Fire counter */}
@@ -88,6 +94,32 @@ export default function EventCard({
             <circle cx="12" cy="10" r="3" fill="var(--bg-card)" />
           </svg>
           {event.area}
+        </div>
+
+        <div
+          className="flex items-center justify-between gap-2 rounded-xl px-3 py-2"
+          style={{
+            background: "rgba(255,255,255,0.035)",
+            border: "1px solid rgba(255,255,255,0.06)",
+          }}
+        >
+          <div className="min-w-0">
+            <p
+              className="truncate text-[10px] font-bold uppercase tracking-[0.16em]"
+              style={{ color: "var(--text-muted)" }}
+            >
+              SOURCE
+            </p>
+            <p className="truncate text-xs font-semibold" style={{ color: "var(--text-dim)" }}>
+              {source.cue} · {source.detailLabel}
+            </p>
+          </div>
+          <span
+            className="shrink-0 rounded-full px-2.5 py-1 text-[9px] font-bold tracking-wider"
+            style={{ background: category.bg, color: category.color }}
+          >
+            {category.label}
+          </span>
         </div>
 
         <div className="flex items-center justify-between">
@@ -158,11 +190,72 @@ export default function EventCard({
               </div>
             </div>
 
+            {event.description && (
+              <p className="text-sm leading-relaxed" style={{ color: "var(--text-dim)" }}>
+                {event.description}
+              </p>
+            )}
+
+            {(event.crowd || event.dress || event.host) && (
+              <div className="grid grid-cols-2 gap-2">
+                {event.crowd && (
+                  <div
+                    className="rounded-xl px-3 py-2"
+                    style={{ background: "var(--bg-card-elevated)" }}
+                  >
+                    <p
+                      className="text-[9px] font-bold tracking-[0.16em] uppercase"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      CROWD
+                    </p>
+                    <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+                      {event.crowd}
+                    </p>
+                  </div>
+                )}
+                {event.dress && (
+                  <div
+                    className="rounded-xl px-3 py-2"
+                    style={{ background: "var(--bg-card-elevated)" }}
+                  >
+                    <p
+                      className="text-[9px] font-bold tracking-[0.16em] uppercase"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      VIBE LINE
+                    </p>
+                    <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+                      {event.dress}
+                    </p>
+                  </div>
+                )}
+                {event.host && (
+                  <div
+                    className="col-span-2 rounded-xl px-3 py-2"
+                    style={{ background: "var(--bg-card-elevated)" }}
+                  >
+                    <p
+                      className="text-[9px] font-bold tracking-[0.16em] uppercase"
+                      style={{ color: "var(--text-muted)" }}
+                    >
+                      HOST NOTE
+                    </p>
+                    <p className="text-xs font-semibold" style={{ color: "var(--text)" }}>
+                      {event.host}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-              Spotted on{" "}
+              Source layer:{" "}
               <span className="font-bold" style={{ color: source.bg }}>
-                {source.label}
+                {source.detailLabel}
               </span>
+              {" · "}
+              {category.description}
               {" · "}Tap 🔥 to add your energy
             </p>
           </div>

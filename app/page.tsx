@@ -1,15 +1,40 @@
 "use client";
 import { useState, useEffect } from "react";
-import { SEED_EVENTS, FunctionEvent, Vibe, VIBE_CONFIG } from "@/lib/events";
+import {
+  FunctionEvent,
+  SEED_EVENTS,
+  SOURCE_CATEGORY_CONFIG,
+  SOURCE_CONFIG,
+  SourceCategory,
+  VIBE_CONFIG,
+  Vibe,
+} from "@/lib/events";
 import EventCard from "@/components/EventCard";
 import PostFunctionModal from "@/components/PostFunctionModal";
 
 const FILTERS: (Vibe | "all")[] = ["all", "rave", "darty", "kickback", "club", "house", "bar"];
+const SOURCE_CATEGORIES: SourceCategory[] = ["imported", "community", "campus", "promoter", "curated"];
+const FRESH_SUBMISSION_WINDOW_MS = 10 * 60 * 1000;
+
+function submittedAt(event: FunctionEvent): number {
+  const match = /^user-(\d+)/.exec(event.id);
+  return match ? Number(match[1]) : 0;
+}
+
+function freshSubmissionRank(event: FunctionEvent, now: number): number {
+  const timestamp = submittedAt(event);
+  if (!timestamp || now - timestamp > FRESH_SUBMISSION_WINDOW_MS) return 0;
+  return timestamp;
+}
 
 export default function FeedPage() {
   const [events, setEvents] = useState<FunctionEvent[]>(SEED_EVENTS);
   const [filter, setFilter] = useState<Vibe | "all">("all");
   const [modalOpen, setModalOpen] = useState(false);
+  const sourceMix = SOURCE_CATEGORIES.map((category) => ({
+    category,
+    count: events.filter((event) => SOURCE_CONFIG[event.source].category === category).length,
+  })).filter((item) => item.count > 0);
 
   // Fetch user-submitted events on mount
   useEffect(() => {
@@ -28,7 +53,14 @@ export default function FeedPage() {
   }, []);
 
   const filtered = filter === "all" ? events : events.filter((e) => e.vibe === filter);
-  const sorted = [...filtered].sort((a, b) => b.fire - a.fire);
+  const sortTime = Date.now();
+  const sorted = [...filtered].sort((a, b) => {
+    const aFresh = freshSubmissionRank(a, sortTime);
+    const bFresh = freshSubmissionRank(b, sortTime);
+
+    if (aFresh || bFresh) return bFresh - aFresh;
+    return b.fire - a.fire;
+  });
 
   function handleFire(id: string) {
     setEvents((prev) =>
@@ -37,7 +69,8 @@ export default function FeedPage() {
   }
 
   function handleNewEvent(event: FunctionEvent) {
-    setEvents((prev) => [event, ...prev]);
+    setFilter(event.vibe);
+    setEvents((prev) => [event, ...prev.filter((existing) => existing.id !== event.id)]);
   }
 
   return (
@@ -67,7 +100,7 @@ export default function FeedPage() {
           className="text-[11px] font-bold tracking-[0.2em] uppercase"
           style={{ color: "var(--accent)" }}
         >
-          LIVE ENERGY
+          SOURCE MIX
         </p>
         <h1
           className="text-3xl tracking-wide leading-none mt-1"
@@ -75,6 +108,55 @@ export default function FeedPage() {
         >
           TONIGHT IN THE CITY
         </h1>
+        <p className="mt-2 text-sm leading-relaxed" style={{ color: "var(--text-dim)" }}>
+          Campus, promoter, community, and imported listings in one feed.
+        </p>
+      </div>
+
+      <div
+        className="rounded-2xl px-3 py-3"
+        style={{
+          background: "rgba(26,17,24,0.72)",
+          border: "1px solid rgba(255,255,255,0.07)",
+        }}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p
+              className="text-[10px] font-bold uppercase tracking-[0.16em]"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Source Layer
+            </p>
+            <p className="mt-1 text-xs" style={{ color: "var(--text-dim)" }}>
+              Community posts plus imported-style listings.
+            </p>
+          </div>
+          <span
+            className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold"
+            style={{ background: "var(--accent-soft)", color: "var(--text)" }}
+          >
+            {events.length} LISTINGS
+          </span>
+        </div>
+        <div className="mt-3 flex gap-2 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+          {sourceMix.map(({ category, count }) => {
+            const cfg = SOURCE_CATEGORY_CONFIG[category];
+            return (
+              <span
+                key={category}
+                className="shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold tracking-wider"
+                style={{
+                  background: "rgba(255,255,255,0.045)",
+                  border: `1px solid ${cfg.bg}55`,
+                  color: "var(--text-dim)",
+                }}
+              >
+                <span style={{ color: cfg.bg }}>{cfg.label}</span> {count}
+              </span>
+            );
+          })}
+        </div>
       </div>
 
       {/* Filter chips */}
