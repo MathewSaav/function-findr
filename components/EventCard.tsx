@@ -1,20 +1,28 @@
 "use client";
+import { useState } from "react";
 import { FunctionEvent, VIBE_CONFIG, SOURCE_CONFIG } from "@/lib/events";
 
 export default function EventCard({
   event,
   onFire,
+  index = 0,
 }: {
   event: FunctionEvent;
   onFire: () => void;
+  index?: number;
 }) {
   const vibe = VIBE_CONFIG[event.vibe];
   const source = SOURCE_CONFIG[event.source];
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div
       className="rounded-2xl overflow-hidden"
-      style={{ background: "var(--bg-card)", border: "1px solid var(--border)" }}
+      style={{
+        background: "var(--bg-card)",
+        border: "1px solid var(--border)",
+        animation: `card-enter 0.4s ease-out ${index * 0.08}s both`,
+      }}
     >
       {/* Hero image area */}
       <div
@@ -95,16 +103,70 @@ export default function EventCard({
             </p>
           </div>
           <button
+            onClick={() => setExpanded(!expanded)}
             className="text-xs font-bold tracking-wider px-4 py-2 rounded-full transition-all active:scale-95"
-            style={{
-              border: `1.5px solid var(--accent)`,
-              color: "var(--accent)",
-              background: "transparent",
-            }}
+            style={
+              expanded
+                ? {
+                    background: "var(--accent)",
+                    color: "#fff",
+                    border: "1.5px solid var(--accent)",
+                  }
+                : {
+                    border: "1.5px solid var(--accent)",
+                    color: "var(--accent)",
+                    background: "transparent",
+                  }
+            }
           >
-            {event.fire > 120 ? "JOIN PULSE" : "DETAILS"}
+            {expanded ? "CLOSE" : event.fire > 120 ? "JOIN PULSE" : "DETAILS"}
           </button>
         </div>
+
+        {/* Expanded section */}
+        {expanded && (
+          <div
+            className="pt-2 mt-1 space-y-3"
+            style={{ borderTop: "1px solid var(--border)" }}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl"
+                style={{ background: "var(--bg-card-elevated)" }}
+              >
+                <span className="text-lg">🔥</span>
+                <span
+                  className="text-xl font-bold"
+                  style={{
+                    fontFamily: "'Bebas Neue', sans-serif",
+                    color: "var(--accent)",
+                  }}
+                >
+                  {event.fire}
+                </span>
+              </div>
+              <div>
+                <p
+                  className="text-[10px] font-bold tracking-[0.15em]"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  PULSE CHECK
+                </p>
+                <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+                  {event.fire} people are feeling this
+                </p>
+              </div>
+            </div>
+
+            <p className="text-xs" style={{ color: "var(--text-dim)" }}>
+              Spotted on{" "}
+              <span className="font-bold" style={{ color: source.bg }}>
+                {source.label}
+              </span>
+              {" · "}Tap 🔥 to add your energy
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

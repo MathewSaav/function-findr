@@ -1,13 +1,31 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { SEED_EVENTS, FunctionEvent, Vibe, VIBE_CONFIG } from "@/lib/events";
 import EventCard from "@/components/EventCard";
+import PostFunctionModal from "@/components/PostFunctionModal";
 
 const FILTERS: (Vibe | "all")[] = ["all", "rave", "darty", "kickback", "club", "house", "bar"];
 
 export default function FeedPage() {
   const [events, setEvents] = useState<FunctionEvent[]>(SEED_EVENTS);
   const [filter, setFilter] = useState<Vibe | "all">("all");
+  const [modalOpen, setModalOpen] = useState(false);
+
+  // Fetch user-submitted events on mount
+  useEffect(() => {
+    fetch("/api/events")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.events && d.events.length > 0) {
+          setEvents((prev) => {
+            const ids = new Set(prev.map((e) => e.id));
+            const newEvents = d.events.filter((e: FunctionEvent) => !ids.has(e.id));
+            return [...newEvents, ...prev];
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const filtered = filter === "all" ? events : events.filter((e) => e.vibe === filter);
   const sorted = [...filtered].sort((a, b) => b.fire - a.fire);
@@ -16,6 +34,10 @@ export default function FeedPage() {
     setEvents((prev) =>
       prev.map((e) => (e.id === id ? { ...e, fire: e.fire + 1 } : e))
     );
+  }
+
+  function handleNewEvent(event: FunctionEvent) {
+    setEvents((prev) => [event, ...prev]);
   }
 
   return (
@@ -86,18 +108,31 @@ export default function FeedPage() {
 
       {/* Cards */}
       <div className="space-y-4 pb-4">
-        {sorted.map((event) => (
-          <EventCard key={event.id} event={event} onFire={() => handleFire(event.id)} />
+        {sorted.map((event, index) => (
+          <EventCard
+            key={event.id}
+            event={event}
+            onFire={() => handleFire(event.id)}
+            index={index}
+          />
         ))}
       </div>
 
       {/* FAB - post a function */}
       <button
+        onClick={() => setModalOpen(true)}
         className="fixed bottom-24 right-5 w-14 h-14 rounded-full flex items-center justify-center text-2xl font-bold shadow-lg z-40 active:scale-90 transition-transform glow-accent"
         style={{ background: "var(--accent)", color: "#fff" }}
       >
         +
       </button>
+
+      {/* Post modal */}
+      <PostFunctionModal
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSubmit={handleNewEvent}
+      />
     </div>
   );
 }
