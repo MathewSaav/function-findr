@@ -40,7 +40,20 @@ export default function MapPage() {
   const leafletRef = useRef<typeof L | null>(null);
   const [selected, setSelected] = useState<FunctionEvent | null>(null);
   const [filter, setFilter] = useState<string>("all");
-  const events = SEED_EVENTS;
+  const [userEvents, setUserEvents] = useState<FunctionEvent[]>([]);
+  const events = [...SEED_EVENTS, ...userEvents];
+
+  // Fetch user-submitted events
+  useEffect(() => {
+    fetch("/api/events")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.events && d.events.length > 0) {
+          setUserEvents(d.events);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const filteredEvents = filter === "all"
     ? events

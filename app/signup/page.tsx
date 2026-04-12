@@ -1,17 +1,36 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 
 export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
+  const prevCount = useRef(0);
 
+  // Poll signup count every 5 seconds
   useEffect(() => {
-    fetch("/api/signup")
-      .then((r) => r.json())
-      .then((d) => setCount(d.count))
-      .catch(() => {});
+    let active = true;
+
+    function poll() {
+      fetch("/api/signup")
+        .then((r) => r.json())
+        .then((d) => {
+          if (active && d.count >= prevCount.current) {
+            prevCount.current = d.count;
+            setCount(d.count);
+          }
+        })
+        .catch(() => {});
+    }
+
+    poll();
+    const interval = setInterval(poll, 5000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
   }, []);
 
   async function handleSubmit() {
@@ -27,6 +46,7 @@ export default function SignupPage() {
       if (data.ok) {
         setSubmitted(true);
         setCount(data.count);
+        prevCount.current = data.count;
       }
     } catch {
       alert("Something went wrong — try again!");
@@ -128,14 +148,14 @@ export default function SignupPage() {
                     color: "var(--text-dim)",
                   }}
                 >
-                  +{displayCount}
+                  +<span key={count} className="count-bump">{displayCount}</span>
                 </div>
               </div>
               <p
                 className="text-[11px] font-bold tracking-[0.2em]"
                 style={{ color: "var(--text-muted)" }}
               >
-                {displayCount} STUDENTS ALREADY JOINED
+                <span key={count} className="count-bump">{displayCount}</span> STUDENTS ALREADY JOINED
               </p>
             </div>
 
@@ -219,7 +239,7 @@ export default function SignupPage() {
               className="text-[11px] font-bold tracking-[0.2em]"
               style={{ color: "var(--text-muted)" }}
             >
-              {displayCount} STUDENTS ON THE WAITLIST
+              <span key={count} className="count-bump">{displayCount}</span> STUDENTS ON THE WAITLIST
             </p>
           </>
         )}

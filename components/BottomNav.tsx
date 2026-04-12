@@ -25,7 +25,7 @@ const tabs = [
     ),
   },
   {
-    href: "#",
+    href: "/alerts",
     label: "ALERTS",
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -35,7 +35,7 @@ const tabs = [
     ),
   },
   {
-    href: "#",
+    href: "/profile",
     label: "PROFILE",
     icon: (active: boolean) => (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={active ? "var(--accent)" : "var(--text-muted)"} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
