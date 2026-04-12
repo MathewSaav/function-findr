@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700&display=swap');
+
+:root {
+  --bg: #0c0a0e;
+  --bg-card: #1a1118;
+  --bg-card-elevated: #221820;
+  --border: #2e1f28;
+  --accent: #dc2743;
+  --accent-glow: rgba(220, 39, 67, 0.35);
+  --accent-soft: rgba(220, 39, 67, 0.15);
+  --text: #f2eeef;
+  --text-dim: #8a7e83;
+  --text-muted: #5c5258;
+  --source-partiful: #dc2743;
+  --source-eventbrite: #f0854a;
+  --source-plotz: #a855f7;
+  --source-user: #34d399;
+  --source-dice: #38bdf8;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body { height: 100%; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 0; height: 0; }
+
+.font-display { font-family: 'Bebas Neue', sans-serif; }
+
+/* Fire pulse on tap */
+@keyframes pulse-fire {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.12); }
+}
+.fire-pulse:active { animation: pulse-fire 0.3s ease-out; }
+
+/* Glow behind accent elements */
+.glow-accent {
+  box-shadow: 0 0 40px var(--accent-glow), 0 0 80px rgba(220, 39, 67, 0.15);
+}
+
+/* Leaflet dark overrides */
+.leaflet-container { background: #0c0a0e !important; }
+.leaflet-control-attribution { display: none !important; }
+.leaflet-control-zoom { display: none !important; }
