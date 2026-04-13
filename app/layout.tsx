@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import BottomNav from "@/components/BottomNav";
+import WhopInit from "@/components/WhopInit";
 
 export const metadata: Metadata = {
   title: "Findr — The Move Is Here",
@@ -11,6 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en">
       <body className="min-h-screen" style={{ paddingBottom: "5rem" }}>
+        <WhopInit />
         <main className="max-w-md mx-auto">{children}</main>
         <BottomNav />
       </body>

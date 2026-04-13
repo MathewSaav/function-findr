@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { FunctionEvent, Source, Vibe, VIBE_CONFIG } from "@/lib/events";
 
-const DATA_PATH = join(process.cwd(), "user-events.json");
+const DATA_PATH = join("/tmp", "user-events.json");
 
 const VALID_VIBES: Vibe[] = ["rave", "darty", "kickback", "house", "bar", "club"];
 const VALID_SOURCES: Source[] = [
