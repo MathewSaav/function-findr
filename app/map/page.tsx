@@ -10,13 +10,6 @@ import {
   Vibe,
 } from "@/lib/events";
 import SourceLogo from "@/components/SourceLogo";
-import "mapbox-gl/dist/mapbox-gl.css";
-
-// Dynamically import Mapbox GL JS on the client.
-async function loadMapbox() {
-  const mapboxgl = (await import("mapbox-gl")).default;
-  return mapboxgl;
-}
 
 type FilterKey = Vibe | "all";
 type ZoneSelection = {
@@ -28,8 +21,6 @@ type ZoneSelection = {
 // General San Jose State / downtown demo center.
 const CENTER: [number, number] = [37.335, -121.893];
 const ZOOM = 14;
-const MAPBOX_DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
-const MAPBOX_STATIC_STYLE = "mapbox/dark-v11";
 const MAPBOX_STATIC_MAX_SIZE = 1280;
 
 const FILTER_CHIPS: { key: FilterKey; label: string }[] = [
@@ -89,21 +80,16 @@ function projectStaticPoint(lng: number, lat: number, width: number, height: num
   };
 }
 
-function buildStaticMapUrl(token: string, width: number, height: number) {
-  if (!token) return null;
-
+function buildStaticMapUrl(width: number, height: number) {
   const imageWidth = Math.min(MAPBOX_STATIC_MAX_SIZE, Math.max(320, Math.ceil(width)));
   const imageHeight = Math.min(MAPBOX_STATIC_MAX_SIZE, Math.max(320, Math.ceil(height)));
-  const center = `${CENTER[1]},${CENTER[0]},${ZOOM},0`;
 
-  return `https://api.mapbox.com/styles/v1/${MAPBOX_STATIC_STYLE}/static/${center}/${imageWidth}x${imageHeight}@2x?access_token=${encodeURIComponent(token)}`;
+  return `/api/map/static?width=${imageWidth}&height=${imageHeight}`;
 }
 
 export default function MapPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const mapRef = useRef<any>(null);
   const filteredEventsRef = useRef<FunctionEvent[]>(SEED_EVENTS);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -130,7 +116,6 @@ export default function MapPage() {
   const selectedEvents = selectedZone?.events ?? hottestEvents;
 
   const drawHeat = useCallback((time = performance.now()) => {
-    const map = mapRef.current;
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -160,9 +145,7 @@ export default function MapPage() {
     [...visibleEvents]
       .sort((a, b) => a.fire - b.fire)
       .forEach((event, index) => {
-        const point = map
-          ? map.project([event.lng, event.lat])
-          : projectStaticPoint(event.lng, event.lat, rect.width, rect.height);
+        const point = projectStaticPoint(event.lng, event.lat, rect.width, rect.height);
         const radius = fireToRadius(event.fire);
         if (
           point.x < -radius ||
@@ -220,25 +203,19 @@ export default function MapPage() {
 
   const selectEventsNearPoint = useCallback(
     (clickPoint: { x: number; y: number }, latlng: { lat: number; lng: number }) => {
-      const map = mapRef.current;
       const canvas = canvasRef.current;
       const rect = canvas?.getBoundingClientRect();
+      if (!rect) return;
 
       const scored = filteredEventsRef.current
         .map((event) => {
-          const point = map
-            ? map.project([event.lng, event.lat])
-            : rect
-              ? projectStaticPoint(event.lng, event.lat, rect.width, rect.height)
-              : null;
-          if (!point) return null;
+          const point = projectStaticPoint(event.lng, event.lat, rect.width, rect.height);
           return {
             event,
             distance: distance(clickPoint, point),
             radius: fireToRadius(event.fire),
           };
         })
-        .filter((item): item is { event: FunctionEvent; distance: number; radius: number } => item !== null)
         .filter(({ distance, radius }: { distance: number; radius: number }) => distance <= Math.max(44, radius * 0.72))
         .sort((a: { distance: number; event: FunctionEvent }, b: { distance: number; event: FunctionEvent }) => a.distance - b.distance || b.event.fire - a.event.fire);
 
@@ -295,173 +272,31 @@ export default function MapPage() {
   }, [filteredEvents, requestDraw]);
 
   useEffect(() => {
-    if (!mapContainerRef.current || mapRef.current) return;
+    if (!mapContainerRef.current) return;
 
-    let cancelled = false;
-    let fallbackTimer: number | null = null;
+    const renderStaticMap = () => {
+      const rect = mapContainerRef.current?.getBoundingClientRect();
+      const url = rect ? buildStaticMapUrl(rect.width, rect.height) : null;
 
-    loadMapbox()
-      .then((mapboxgl) => {
-        if (cancelled || !mapContainerRef.current) return;
+      setStaticMapUrl(url);
+      setStaticMapActive(Boolean(url));
+      setMapReady(Boolean(url));
+      setTilesReady(false);
+      setTileError(!url);
+      setMapError(url ? null : "Map could not load. The event data is still available below.");
+      setTimeout(requestDraw, 50);
+    };
 
-        const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
-        mapboxgl.accessToken = token;
-
-        const useMapboxStyle = token.startsWith("pk.");
-        let loaded = false;
-        let staticFallbackStarted = false;
-
-        const startStaticMap = () => {
-          if (cancelled || staticFallbackStarted) return;
-          staticFallbackStarted = true;
-
-          if (fallbackTimer) {
-            window.clearTimeout(fallbackTimer);
-            fallbackTimer = null;
-          }
-
-          if (mapRef.current) {
-            mapRef.current.remove();
-            mapRef.current = null;
-          }
-
-          const rect = mapContainerRef.current?.getBoundingClientRect();
-          const url = rect ? buildStaticMapUrl(token, rect.width, rect.height) : null;
-
-          setStaticMapUrl(url);
-          setStaticMapActive(true);
-          setMapReady(true);
-          setTilesReady(Boolean(url));
-          setTileError(!url);
-          setMapError(url ? null : "Map could not load. The event data is still available below.");
-          setTimeout(requestDraw, 50);
-        };
-
-        try {
-          const map = new mapboxgl.Map({
-            container: mapContainerRef.current,
-            style: useMapboxStyle
-              ? MAPBOX_DARK_STYLE
-              : {
-                  version: 8,
-                  sources: {
-                    "carto-dark": {
-                      type: "raster",
-                      tiles: [
-                        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                      ],
-                      tileSize: 256,
-                      attribution: "&copy; CartoDB",
-                    },
-                  },
-                  layers: [
-                    {
-                      id: "carto-dark-layer",
-                      type: "raster",
-                      source: "carto-dark",
-                      minzoom: 0,
-                      maxzoom: 19,
-                    },
-                  ],
-                },
-            center: [CENTER[1], CENTER[0]], // Mapbox uses [lng, lat]
-            zoom: ZOOM,
-            minZoom: 12,
-            maxZoom: 17,
-            attributionControl: false,
-            failIfMajorPerformanceCaveat: false,
-          });
-
-          mapRef.current = map;
-
-          map.on("load", () => {
-            loaded = true;
-            setTilesReady(true);
-            setMapReady(true);
-            requestDraw();
-          });
-
-          map.on("idle", () => {
-            loaded = true;
-            setTilesReady(true);
-            requestDraw();
-          });
-
-          map.on("error", () => {
-            if (useMapboxStyle) {
-              startStaticMap();
-              return;
-            }
-
-            setTileError(true);
-            setTilesReady(true);
-            requestDraw();
-          });
-
-          map.on("move", requestDraw);
-          map.on("zoom", requestDraw);
-          map.on("resize", requestDraw);
-
-          map.on("click", (e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => {
-            selectEventsNearPoint(e.point, { lat: e.lngLat.lat, lng: e.lngLat.lng });
-          });
-
-          fallbackTimer = window.setTimeout(() => {
-            if (!loaded && useMapboxStyle) startStaticMap();
-          }, 3500);
-        } catch {
-          startStaticMap();
-        }
-      })
-      .catch(() => {
-        const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
-        const rect = mapContainerRef.current?.getBoundingClientRect();
-        const url = rect ? buildStaticMapUrl(token, rect.width, rect.height) : null;
-
-        setStaticMapUrl(url);
-        setStaticMapActive(Boolean(url));
-        setMapReady(Boolean(url));
-        setTilesReady(Boolean(url));
-        setTileError(!url);
-        setMapError(url ? null : "Map could not load. The event data is still available below.");
-        setTimeout(requestDraw, 50);
-      });
-
+    renderStaticMap();
+    window.addEventListener("resize", renderStaticMap);
     return () => {
-      cancelled = true;
-      if (fallbackTimer) {
-        window.clearTimeout(fallbackTimer);
-        fallbackTimer = null;
-      }
+      window.removeEventListener("resize", renderStaticMap);
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      if (mapRef.current) {
-        mapRef.current.remove();
-        mapRef.current = null;
-      }
     };
-  }, [requestDraw, selectEventsNearPoint]);
-
-  useEffect(() => {
-    if (!staticMapActive) return;
-
-    const refreshStaticMap = () => {
-      const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
-      const rect = mapContainerRef.current?.getBoundingClientRect();
-      const url = rect ? buildStaticMapUrl(token, rect.width, rect.height) : null;
-
-      setStaticMapUrl(url);
-      setTilesReady(Boolean(url));
-      requestDraw();
-    };
-
-    window.addEventListener("resize", refreshStaticMap);
-    return () => window.removeEventListener("resize", refreshStaticMap);
-  }, [requestDraw, staticMapActive]);
+  }, [requestDraw]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -755,14 +590,6 @@ export default function MapPage() {
                   <button
                     key={event.id}
                     onClick={() => {
-                      const map = mapRef.current;
-                      if (map) {
-                        map.flyTo({
-                          center: [event.lng, event.lat],
-                          zoom: Math.max(map.getZoom(), 15),
-                          duration: 450,
-                        });
-                      }
                       setSelectedZone({
                         anchor: [event.lat, event.lng],
                         events: [event],
