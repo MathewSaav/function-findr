@@ -6,6 +6,7 @@ import {
   SOURCE_CONFIG,
   VIBE_CONFIG,
 } from "@/lib/events";
+import SourceLogo from "@/components/SourceLogo";
 
 export default function EventCard({
   event,
@@ -40,10 +41,11 @@ export default function EventCard({
       >
         {/* Source badge */}
         <span
-          className="absolute top-3 left-3 text-[10px] font-bold tracking-wider px-2.5 py-1 rounded-full"
-          style={{ background: source.bg, color: source.color }}
+          className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-lg px-2 py-1 text-[10px] font-bold tracking-wider"
+          style={{ background: "rgba(12,10,14,0.72)", color: "var(--text)", border: `1px solid ${source.bg}55` }}
         >
-          {source.detailLabel}
+          <SourceLogo source={event.source} tone="plain" />
+          <span>{source.cue}</span>
         </span>
 
         {/* Fire counter */}
@@ -100,7 +102,7 @@ export default function EventCard({
         </div>
 
         <div
-          className="flex items-center justify-between gap-2 rounded-xl px-3 py-2"
+          className="flex items-center justify-between gap-3 rounded-xl px-3 py-2.5"
           style={{
             background: "rgba(255,255,255,0.035)",
             border: "1px solid rgba(255,255,255,0.06)",
@@ -113,9 +115,12 @@ export default function EventCard({
             >
               SOURCE
             </p>
-            <p className="truncate text-xs font-semibold" style={{ color: "var(--text-dim)" }}>
-              {source.cue} · {source.detailLabel}
-            </p>
+            <div className="mt-1.5 flex min-w-0 items-center gap-2">
+              <SourceLogo source={event.source} size="md" />
+              <span className="truncate text-xs font-semibold" style={{ color: "var(--text-dim)" }}>
+                {source.cue}
+              </span>
+            </div>
           </div>
           <span
             className="shrink-0 rounded-full px-2.5 py-1 text-[9px] font-bold tracking-wider"
@@ -253,10 +258,7 @@ export default function EventCard({
             )}
 
             <p className="text-xs" style={{ color: "var(--text-dim)" }}>
-              Source layer:{" "}
-              <span className="font-bold" style={{ color: source.bg }}>
-                {source.detailLabel}
-              </span>
+              Source layer: <SourceLogo source={event.source} tone="plain" />
               {" · "}
               {category.description}
               {" · "}Tap 🔥 to add your energy
