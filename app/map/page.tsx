@@ -75,6 +75,7 @@ export default function MapPage() {
 
   const [selectedZone, setSelectedZone] = useState<ZoneSelection | null>(null);
   const [filter, setFilter] = useState<FilterKey>("all");
+  const [panelOpen, setPanelOpen] = useState(false);
   const [userEvents, setUserEvents] = useState<FunctionEvent[]>([]);
   const [mapReady, setMapReady] = useState(false);
   const [tilesReady, setTilesReady] = useState(false);
@@ -257,11 +258,39 @@ export default function MapPage() {
       .then((mapboxgl) => {
         if (cancelled || !mapContainerRef.current) return;
 
-        mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+        mapboxgl.accessToken = token;
+
+        const hasToken = token.length > 0;
 
         const map = new mapboxgl.Map({
           container: mapContainerRef.current,
-          style: "mapbox://styles/mapbox/dark-v11",
+          style: hasToken
+            ? "mapbox://styles/mapbox/dark-v11"
+            : {
+                version: 8,
+                sources: {
+                  "carto-dark": {
+                    type: "raster",
+                    tiles: [
+                      "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+                      "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+                      "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+                    ],
+                    tileSize: 256,
+                    attribution: "&copy; CartoDB",
+                  },
+                },
+                layers: [
+                  {
+                    id: "carto-dark-layer",
+                    type: "raster",
+                    source: "carto-dark",
+                    minzoom: 0,
+                    maxzoom: 19,
+                  },
+                ],
+              },
           center: [CENTER[1], CENTER[0]], // Mapbox uses [lng, lat]
           zoom: ZOOM,
           minZoom: 12,
@@ -506,43 +535,54 @@ export default function MapPage() {
       )}
 
       <div
-        className="absolute bottom-0 left-0 right-0 z-40 px-4 pb-4 pt-5"
+        className="absolute bottom-0 left-0 right-0 z-40 px-4 pb-4"
         style={{
-          background:
-            "linear-gradient(to top, rgba(12,10,14,0.98) 0%, rgba(12,10,14,0.9) 78%, transparent 100%)",
+          transition: "transform 0.35s cubic-bezier(0.32, 0.72, 0, 1)",
+          transform: panelOpen ? "translateY(0)" : "translateY(calc(100% - 4.5rem))",
         }}
       >
         <div
-          className="rounded-2xl p-4"
+          className="rounded-2xl overflow-hidden"
           style={{
-            background: "rgba(26,17,24,0.88)",
+            background: "rgba(26,17,24,0.92)",
             border: "1px solid rgba(255,255,255,0.08)",
             backdropFilter: "blur(18px)",
-            boxShadow: "0 20px 60px rgba(0,0,0,0.42)",
+            boxShadow: "0 -4px 40px rgba(0,0,0,0.5)",
           }}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <p
-                className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                style={{ color: "var(--accent)" }}
-              >
-                {selectedZone ? "SELECTED HEAT ZONE" : "HOTTEST NEARBY"}
-              </p>
-              <h2 className="font-display mt-1 text-2xl tracking-wide leading-none">
-                {selectedZone
-                  ? `${selectedZone.events.length} MOVES FOUND`
-                  : loadingUserEvents
-                    ? "LOADING THE PULSE"
-                    : "TONIGHT'S TOP GLOWS"}
-              </h2>
+          {/* Collapsed summary bar — always visible, tappable */}
+          <button
+            onClick={() => setPanelOpen(!panelOpen)}
+            className="w-full px-4 py-3 text-left active:scale-[0.99] transition-transform"
+          >
+            <div className="mx-auto mb-2 h-1 w-10 rounded-full" style={{ background: "rgba(255,255,255,0.2)" }} />
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 min-w-0">
+                <p className="font-display text-lg tracking-wide leading-none truncate">
+                  {selectedZone
+                    ? `${selectedZone.events.length} MOVES FOUND`
+                    : loadingUserEvents
+                      ? "LOADING..."
+                      : "TONIGHT'S TOP GLOWS"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="rounded-full px-2.5 py-1 text-[11px] font-bold" style={{ background: "var(--accent-soft)", color: "var(--text)" }}>
+                  🔥 {selectedZone ? selectedZone.totalFire : hottestEvents.reduce((sum, event) => sum + event.fire, 0)}
+                </span>
+                <svg
+                  width="16" height="16" viewBox="0 0 24 24" fill="none"
+                  stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+                  style={{ transition: "transform 0.3s ease", transform: panelOpen ? "rotate(180deg)" : "rotate(0deg)" }}
+                >
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+              </div>
             </div>
-            <div className="shrink-0 rounded-full px-3 py-1.5 text-xs font-bold" style={{ background: "var(--accent-soft)", color: "var(--text)" }}>
-              🔥 {selectedZone ? selectedZone.totalFire : hottestEvents.reduce((sum, event) => sum + event.fire, 0)}
-            </div>
-          </div>
+          </button>
 
-          <div className="mt-3 space-y-2">
+          {/* Expanded event list */}
+          <div className="px-4 pb-4 space-y-2" style={{ maxHeight: "45vh", overflowY: "auto", scrollbarWidth: "none" }}>
             {selectedEvents.length > 0 ? (
               selectedEvents.map((event) => {
                 const vibe = VIBE_CONFIG[event.vibe];
@@ -564,6 +604,7 @@ export default function MapPage() {
                         events: [event],
                         totalFire: event.fire,
                       });
+                      setPanelOpen(false);
                     }}
                     className="w-full rounded-xl px-3 py-3 text-left transition-transform active:scale-[0.98]"
                     style={{
@@ -578,9 +619,6 @@ export default function MapPage() {
                         </p>
                         <p className="mt-1 truncate text-xs" style={{ color: "var(--text-dim)" }}>
                           {event.area} · {event.time}
-                        </p>
-                        <p className="mt-1 truncate text-[11px]" style={{ color: "var(--text-muted)" }}>
-                          {source.cue} · {source.detailLabel}
                         </p>
                       </div>
                       <span className="shrink-0 text-xs font-bold" style={{ color: "var(--text)" }}>
@@ -619,21 +657,21 @@ export default function MapPage() {
                 No events match this view yet.
               </p>
             )}
-          </div>
 
-          {selectedZone && (
-            <button
-              onClick={() => setSelectedZone(null)}
-              className="mt-3 w-full rounded-xl py-2.5 text-xs font-bold tracking-wider transition-transform active:scale-[0.98]"
-              style={{
-                border: "1px solid var(--border)",
-                color: "var(--text-dim)",
-                background: "transparent",
-              }}
-            >
-              CLEAR SELECTION
-            </button>
-          )}
+            {selectedZone && (
+              <button
+                onClick={() => { setSelectedZone(null); setPanelOpen(false); }}
+                className="w-full rounded-xl py-2.5 text-xs font-bold tracking-wider transition-transform active:scale-[0.98]"
+                style={{
+                  border: "1px solid var(--border)",
+                  color: "var(--text-dim)",
+                  background: "transparent",
+                }}
+              >
+                CLEAR SELECTION
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
