@@ -9,6 +9,7 @@ import {
   VIBE_CONFIG,
   Vibe,
 } from "@/lib/events";
+import SourceLogo from "@/components/SourceLogo";
 import "mapbox-gl/dist/mapbox-gl.css";
 
 // Dynamically import Mapbox GL JS on the client.
@@ -27,6 +28,9 @@ type ZoneSelection = {
 // General San Jose State / downtown demo center.
 const CENTER: [number, number] = [37.335, -121.893];
 const ZOOM = 14;
+const MAPBOX_DARK_STYLE = "mapbox://styles/mapbox/dark-v11";
+const MAPBOX_STATIC_STYLE = "mapbox/dark-v11";
+const MAPBOX_STATIC_MAX_SIZE = 1280;
 
 const FILTER_CHIPS: { key: FilterKey; label: string }[] = [
   { key: "all", label: "ALL ENERGY" },
@@ -65,6 +69,36 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+function lngLatToWorld(lng: number, lat: number, zoom: number) {
+  const sin = Math.sin((lat * Math.PI) / 180);
+  const scale = 512 * 2 ** zoom;
+
+  return {
+    x: ((lng + 180) / 360) * scale,
+    y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale,
+  };
+}
+
+function projectStaticPoint(lng: number, lat: number, width: number, height: number) {
+  const center = lngLatToWorld(CENTER[1], CENTER[0], ZOOM);
+  const point = lngLatToWorld(lng, lat, ZOOM);
+
+  return {
+    x: width / 2 + point.x - center.x,
+    y: height / 2 + point.y - center.y,
+  };
+}
+
+function buildStaticMapUrl(token: string, width: number, height: number) {
+  if (!token) return null;
+
+  const imageWidth = Math.min(MAPBOX_STATIC_MAX_SIZE, Math.max(320, Math.ceil(width)));
+  const imageHeight = Math.min(MAPBOX_STATIC_MAX_SIZE, Math.max(320, Math.ceil(height)));
+  const center = `${CENTER[1]},${CENTER[0]},${ZOOM},0`;
+
+  return `https://api.mapbox.com/styles/v1/${MAPBOX_STATIC_STYLE}/static/${center}/${imageWidth}x${imageHeight}@2x?access_token=${encodeURIComponent(token)}`;
+}
+
 export default function MapPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -81,6 +115,8 @@ export default function MapPage() {
   const [tilesReady, setTilesReady] = useState(false);
   const [tileError, setTileError] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
+  const [staticMapActive, setStaticMapActive] = useState(false);
+  const [staticMapUrl, setStaticMapUrl] = useState<string | null>(null);
   const [loadingUserEvents, setLoadingUserEvents] = useState(true);
 
   const events = useMemo(() => [...SEED_EVENTS, ...userEvents], [userEvents]);
@@ -96,7 +132,7 @@ export default function MapPage() {
   const drawHeat = useCallback((time = performance.now()) => {
     const map = mapRef.current;
     const canvas = canvasRef.current;
-    if (!map || !canvas) return;
+    if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -124,7 +160,9 @@ export default function MapPage() {
     [...visibleEvents]
       .sort((a, b) => a.fire - b.fire)
       .forEach((event, index) => {
-        const point = map.project([event.lng, event.lat]);
+        const point = map
+          ? map.project([event.lng, event.lat])
+          : projectStaticPoint(event.lng, event.lat, rect.width, rect.height);
         const radius = fireToRadius(event.fire);
         if (
           point.x < -radius ||
@@ -183,17 +221,24 @@ export default function MapPage() {
   const selectEventsNearPoint = useCallback(
     (clickPoint: { x: number; y: number }, latlng: { lat: number; lng: number }) => {
       const map = mapRef.current;
-      if (!map) return;
+      const canvas = canvasRef.current;
+      const rect = canvas?.getBoundingClientRect();
 
       const scored = filteredEventsRef.current
         .map((event) => {
-          const point = map.project([event.lng, event.lat]);
+          const point = map
+            ? map.project([event.lng, event.lat])
+            : rect
+              ? projectStaticPoint(event.lng, event.lat, rect.width, rect.height)
+              : null;
+          if (!point) return null;
           return {
             event,
             distance: distance(clickPoint, point),
             radius: fireToRadius(event.fire),
           };
         })
+        .filter((item): item is { event: FunctionEvent; distance: number; radius: number } => item !== null)
         .filter(({ distance, radius }: { distance: number; radius: number }) => distance <= Math.max(44, radius * 0.72))
         .sort((a: { distance: number; event: FunctionEvent }, b: { distance: number; event: FunctionEvent }) => a.distance - b.distance || b.event.fire - a.event.fire);
 
@@ -253,82 +298,143 @@ export default function MapPage() {
     if (!mapContainerRef.current || mapRef.current) return;
 
     let cancelled = false;
+    let fallbackTimer: number | null = null;
 
     loadMapbox()
       .then((mapboxgl) => {
         if (cancelled || !mapContainerRef.current) return;
 
-        const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+        const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
         mapboxgl.accessToken = token;
 
-        const hasToken = token.length > 0;
+        const useMapboxStyle = token.startsWith("pk.");
+        let loaded = false;
+        let staticFallbackStarted = false;
 
-        const map = new mapboxgl.Map({
-          container: mapContainerRef.current,
-          style: hasToken
-            ? "mapbox://styles/mapbox/dark-v11"
-            : {
-                version: 8,
-                sources: {
-                  "carto-dark": {
-                    type: "raster",
-                    tiles: [
-                      "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                      "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                      "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
-                    ],
-                    tileSize: 256,
-                    attribution: "&copy; CartoDB",
-                  },
-                },
-                layers: [
-                  {
-                    id: "carto-dark-layer",
-                    type: "raster",
-                    source: "carto-dark",
-                    minzoom: 0,
-                    maxzoom: 19,
-                  },
-                ],
-              },
-          center: [CENTER[1], CENTER[0]], // Mapbox uses [lng, lat]
-          zoom: ZOOM,
-          minZoom: 12,
-          maxZoom: 17,
-          attributionControl: false,
-        });
+        const startStaticMap = () => {
+          if (cancelled || staticFallbackStarted) return;
+          staticFallbackStarted = true;
 
-        mapRef.current = map;
+          if (fallbackTimer) {
+            window.clearTimeout(fallbackTimer);
+            fallbackTimer = null;
+          }
 
-        map.on("load", () => {
-          setTilesReady(true);
+          if (mapRef.current) {
+            mapRef.current.remove();
+            mapRef.current = null;
+          }
+
+          const rect = mapContainerRef.current?.getBoundingClientRect();
+          const url = rect ? buildStaticMapUrl(token, rect.width, rect.height) : null;
+
+          setStaticMapUrl(url);
+          setStaticMapActive(true);
           setMapReady(true);
-          requestDraw();
-        });
+          setTilesReady(Boolean(url));
+          setTileError(!url);
+          setMapError(url ? null : "Map could not load. The event data is still available below.");
+          setTimeout(requestDraw, 50);
+        };
 
-        map.on("error", () => {
-          setTileError(true);
-          setTilesReady(true);
-          requestDraw();
-        });
+        try {
+          const map = new mapboxgl.Map({
+            container: mapContainerRef.current,
+            style: useMapboxStyle
+              ? MAPBOX_DARK_STYLE
+              : {
+                  version: 8,
+                  sources: {
+                    "carto-dark": {
+                      type: "raster",
+                      tiles: [
+                        "https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+                        "https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+                        "https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png",
+                      ],
+                      tileSize: 256,
+                      attribution: "&copy; CartoDB",
+                    },
+                  },
+                  layers: [
+                    {
+                      id: "carto-dark-layer",
+                      type: "raster",
+                      source: "carto-dark",
+                      minzoom: 0,
+                      maxzoom: 19,
+                    },
+                  ],
+                },
+            center: [CENTER[1], CENTER[0]], // Mapbox uses [lng, lat]
+            zoom: ZOOM,
+            minZoom: 12,
+            maxZoom: 17,
+            attributionControl: false,
+            failIfMajorPerformanceCaveat: false,
+          });
 
-        map.on("move", requestDraw);
-        map.on("zoom", requestDraw);
-        map.on("resize", requestDraw);
+          mapRef.current = map;
 
-        map.on("click", (e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => {
-          selectEventsNearPoint(e.point, { lat: e.lngLat.lat, lng: e.lngLat.lng });
-        });
+          map.on("load", () => {
+            loaded = true;
+            setTilesReady(true);
+            setMapReady(true);
+            requestDraw();
+          });
 
-        setMapReady(true);
-        setTimeout(requestDraw, 150);
+          map.on("idle", () => {
+            loaded = true;
+            setTilesReady(true);
+            requestDraw();
+          });
+
+          map.on("error", () => {
+            if (!loaded && useMapboxStyle) {
+              startStaticMap();
+              return;
+            }
+
+            setTileError(true);
+            setTilesReady(true);
+            requestDraw();
+          });
+
+          map.on("move", requestDraw);
+          map.on("zoom", requestDraw);
+          map.on("resize", requestDraw);
+
+          map.on("click", (e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => {
+            selectEventsNearPoint(e.point, { lat: e.lngLat.lat, lng: e.lngLat.lng });
+          });
+
+          fallbackTimer = window.setTimeout(() => {
+            if (!loaded && useMapboxStyle) startStaticMap();
+          }, 3500);
+        } catch {
+          startStaticMap();
+        }
       })
       .catch(() => {
-        setMapError("Map could not load. The event data is still available below.");
+        const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
+        const rect = mapContainerRef.current?.getBoundingClientRect();
+        const url = rect ? buildStaticMapUrl(token, rect.width, rect.height) : null;
+
+        setStaticMapUrl(url);
+        setStaticMapActive(Boolean(url));
+        setMapReady(Boolean(url));
+        setTilesReady(Boolean(url));
+        setTileError(!url);
+        setMapError(url ? null : "Map could not load. The event data is still available below.");
+        setTimeout(requestDraw, 50);
       });
 
     return () => {
       cancelled = true;
+      if (fallbackTimer) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
@@ -339,6 +445,23 @@ export default function MapPage() {
       }
     };
   }, [requestDraw, selectEventsNearPoint]);
+
+  useEffect(() => {
+    if (!staticMapActive) return;
+
+    const refreshStaticMap = () => {
+      const token = (process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "").trim();
+      const rect = mapContainerRef.current?.getBoundingClientRect();
+      const url = rect ? buildStaticMapUrl(token, rect.width, rect.height) : null;
+
+      setStaticMapUrl(url);
+      setTilesReady(Boolean(url));
+      requestDraw();
+    };
+
+    window.addEventListener("resize", refreshStaticMap);
+    return () => window.removeEventListener("resize", refreshStaticMap);
+  }, [requestDraw, staticMapActive]);
 
   useEffect(() => {
     if (!mapReady) return;
@@ -442,7 +565,47 @@ export default function MapPage() {
         }}
       />
 
-      <canvas ref={canvasRef} className="absolute inset-0 z-10 pointer-events-none" />
+      {staticMapActive && (
+        <div
+          className="absolute inset-0 z-[1] overflow-hidden"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            selectEventsNearPoint(
+              { x: event.clientX - rect.left, y: event.clientY - rect.top },
+              { lat: CENTER[0], lng: CENTER[1] }
+            );
+          }}
+          style={{
+            background:
+              "linear-gradient(135deg, #070609 0%, #100b11 45%, #0b1019 100%)",
+          }}
+        >
+          {staticMapUrl && (
+            <img
+              src={staticMapUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              draggable={false}
+              onLoad={() => {
+                setTilesReady(true);
+                setTileError(false);
+                requestDraw();
+              }}
+              onError={() => {
+                setTilesReady(true);
+                setTileError(true);
+                requestDraw();
+              }}
+            />
+          )}
+        </div>
+      )}
+
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 z-10 h-full w-full pointer-events-none"
+        style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
+      />
 
       <div
         className="pointer-events-none absolute inset-0 z-20"
@@ -637,10 +800,9 @@ export default function MapPage() {
                         {vibe.label}
                       </span>
                       <span
-                        className="rounded-full px-2 py-1 text-[9px] font-bold tracking-wider"
-                        style={{ color: source.color, background: source.bg }}
+                        className="inline-flex items-center"
                       >
-                        {source.detailLabel}
+                        <SourceLogo source={event.source} />
                       </span>
                       <span
                         className="rounded-full px-2 py-1 text-[9px] font-bold tracking-wider"
