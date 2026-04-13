@@ -390,7 +390,7 @@ export default function MapPage() {
           });
 
           map.on("error", () => {
-            if (!loaded && useMapboxStyle) {
+            if (useMapboxStyle) {
               startStaticMap();
               return;
             }
@@ -756,12 +756,13 @@ export default function MapPage() {
                     key={event.id}
                     onClick={() => {
                       const map = mapRef.current;
-                      if (!map) return;
-                      map.flyTo({
-                        center: [event.lng, event.lat],
-                        zoom: Math.max(map.getZoom(), 15),
-                        duration: 450,
-                      });
+                      if (map) {
+                        map.flyTo({
+                          center: [event.lng, event.lat],
+                          zoom: Math.max(map.getZoom(), 15),
+                          duration: 450,
+                        });
+                      }
                       setSelectedZone({
                         anchor: [event.lat, event.lng],
                         events: [event],
