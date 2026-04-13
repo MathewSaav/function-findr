@@ -36,7 +36,15 @@ body {
 
 ::-webkit-scrollbar { width: 0; height: 0; }
 
-.font-display { font-family: 'Bebas Neue', sans-serif; }
+.font-display {
+  font-family: 'Bebas Neue', sans-serif;
+  letter-spacing: 0.04em;
+  line-height: 0.95;
+}
+
+button, a, input {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
 
 /* Fire pulse on tap */
 @keyframes pulse-fire {
@@ -95,7 +103,7 @@ body {
   50% { transform: scale(1.08); opacity: 1; }
 }
 
-/* Leaflet dark overrides */
-.leaflet-container { background: #0c0a0e !important; }
-.leaflet-control-attribution { display: none !important; }
-.leaflet-control-zoom { display: none !important; }
+/* Mapbox dark overrides */
+.mapboxgl-map { background: #0c0a0e !important; }
+.mapboxgl-ctrl-attrib { display: none !important; }
+.mapboxgl-ctrl-logo { display: none !important; }

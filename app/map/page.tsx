@@ -9,14 +9,12 @@ import {
   VIBE_CONFIG,
   Vibe,
 } from "@/lib/events";
-import type L from "leaflet";
-import type { LeafletMouseEvent } from "leaflet";
+import "mapbox-gl/dist/mapbox-gl.css";
 
-// Dynamically import Leaflet on the client.
-async function loadLeaflet() {
-  const L = (await import("leaflet")).default;
-  await import("leaflet/dist/leaflet.css");
-  return L;
+// Dynamically import Mapbox GL JS on the client.
+async function loadMapbox() {
+  const mapboxgl = (await import("mapbox-gl")).default;
+  return mapboxgl;
 }
 
 type FilterKey = Vibe | "all";
@@ -41,11 +39,11 @@ const FILTER_CHIPS: { key: FilterKey; label: string }[] = [
 ];
 
 function fireToRadius(fire: number): number {
-  return Math.min(30 + Math.sqrt(Math.max(fire, 1)) * 4.15, 98);
+  return Math.min(30 + Math.sqrt(Math.max(fire, 1)) * 4.15, 72);
 }
 
 function fireToOpacity(fire: number): number {
-  return 0.22 + Math.min(fire / 280, 1) * 0.42;
+  return 0.18 + Math.min(fire / 280, 1) * 0.37;
 }
 
 function fireToColor(fire: number): string {
@@ -70,8 +68,8 @@ function distance(a: { x: number; y: number }, b: { x: number; y: number }) {
 export default function MapPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const leafletRef = useRef<typeof L | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null);
   const filteredEventsRef = useRef<FunctionEvent[]>(SEED_EVENTS);
   const animationFrameRef = useRef<number | null>(null);
 
@@ -97,8 +95,7 @@ export default function MapPage() {
   const drawHeat = useCallback((time = performance.now()) => {
     const map = mapRef.current;
     const canvas = canvasRef.current;
-    const Lf = leafletRef.current;
-    if (!map || !canvas || !Lf) return;
+    if (!map || !canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
@@ -121,12 +118,12 @@ export default function MapPage() {
     const visibleEvents = filteredEventsRef.current;
     if (visibleEvents.length === 0) return;
 
-    ctx.globalCompositeOperation = "lighter";
+    ctx.globalCompositeOperation = "screen";
 
     [...visibleEvents]
       .sort((a, b) => a.fire - b.fire)
       .forEach((event, index) => {
-        const point = map.latLngToContainerPoint(Lf.latLng(event.lat, event.lng));
+        const point = map.project([event.lng, event.lat]);
         const radius = fireToRadius(event.fire);
         if (
           point.x < -radius ||
@@ -139,7 +136,7 @@ export default function MapPage() {
 
         const pulse = 1 + Math.sin(time / 1100 + index * 0.9) * 0.045;
         const glowRadius = radius * pulse;
-        const hazeRadius = glowRadius * 1.55;
+        const hazeRadius = glowRadius * (event.fire > 150 ? 1.25 : 1.55);
         const opacity = fireToOpacity(event.fire);
         const { r, g, b } = hexToRgb(fireToColor(event.fire));
 
@@ -168,7 +165,7 @@ export default function MapPage() {
         ctx.beginPath();
         ctx.arc(point.x, point.y, event.fire > 150 ? 3.5 : 2.6, 0, Math.PI * 2);
         ctx.fill();
-        ctx.globalCompositeOperation = "lighter";
+        ctx.globalCompositeOperation = "screen";
       });
 
     ctx.globalCompositeOperation = "source-over";
@@ -183,22 +180,21 @@ export default function MapPage() {
   }, [drawHeat]);
 
   const selectEventsNearPoint = useCallback(
-    (clickPoint: L.Point, latlng: L.LatLng) => {
+    (clickPoint: { x: number; y: number }, latlng: { lat: number; lng: number }) => {
       const map = mapRef.current;
-      const Lf = leafletRef.current;
-      if (!map || !Lf) return;
+      if (!map) return;
 
       const scored = filteredEventsRef.current
         .map((event) => {
-          const point = map.latLngToContainerPoint(Lf.latLng(event.lat, event.lng));
+          const point = map.project([event.lng, event.lat]);
           return {
             event,
             distance: distance(clickPoint, point),
             radius: fireToRadius(event.fire),
           };
         })
-        .filter(({ distance, radius }) => distance <= Math.max(44, radius * 0.72))
-        .sort((a, b) => a.distance - b.distance || b.event.fire - a.event.fire);
+        .filter(({ distance, radius }: { distance: number; radius: number }) => distance <= Math.max(44, radius * 0.72))
+        .sort((a: { distance: number; event: FunctionEvent }, b: { distance: number; event: FunctionEvent }) => a.distance - b.distance || b.event.fire - a.event.fire);
 
       if (scored.length === 0) {
         setSelectedZone(null);
@@ -207,13 +203,13 @@ export default function MapPage() {
 
       const zoneEvents = scored
         .slice(0, 7)
-        .map(({ event }) => event)
-        .sort((a, b) => b.fire - a.fire);
+        .map(({ event }: { event: FunctionEvent }) => event)
+        .sort((a: FunctionEvent, b: FunctionEvent) => b.fire - a.fire);
 
       setSelectedZone({
         anchor: [latlng.lat, latlng.lng],
         events: zoneEvents,
-        totalFire: zoneEvents.reduce((sum, event) => sum + event.fire, 0),
+        totalFire: zoneEvents.reduce((sum: number, event: FunctionEvent) => sum + event.fire, 0),
       });
     },
     []
@@ -257,56 +253,46 @@ export default function MapPage() {
 
     let cancelled = false;
 
-    loadLeaflet()
-      .then((Leaflet) => {
+    loadMapbox()
+      .then((mapboxgl) => {
         if (cancelled || !mapContainerRef.current) return;
-        leafletRef.current = Leaflet;
 
-        const map = Leaflet.map(mapContainerRef.current, {
-          center: CENTER,
+        mapboxgl.accessToken = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+
+        const map = new mapboxgl.Map({
+          container: mapContainerRef.current,
+          style: "mapbox://styles/mapbox/dark-v11",
+          center: [CENTER[1], CENTER[0]], // Mapbox uses [lng, lat]
           zoom: ZOOM,
-          zoomControl: false,
-          attributionControl: false,
-          preferCanvas: true,
           minZoom: 12,
           maxZoom: 17,
+          attributionControl: false,
         });
 
         mapRef.current = map;
 
-        // CartoDB dark tiles do not require an app API key; Mapbox is unnecessary here.
-        const tileLayer = Leaflet.tileLayer(
-          "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
-          { maxZoom: 19 }
-        ).addTo(map);
-
-        tileLayer.on("load", () => {
+        map.on("load", () => {
           setTilesReady(true);
+          setMapReady(true);
           requestDraw();
         });
 
-        tileLayer.on("tileerror", () => {
+        map.on("error", () => {
           setTileError(true);
           setTilesReady(true);
           requestDraw();
         });
 
-        map.on("load", () => {
-          setMapReady(true);
-          requestDraw();
-        });
+        map.on("move", requestDraw);
+        map.on("zoom", requestDraw);
+        map.on("resize", requestDraw);
 
-        map.on("move zoom resize", requestDraw);
-        map.on("click", (event: LeafletMouseEvent) => {
-          const point = map.latLngToContainerPoint(event.latlng);
-          selectEventsNearPoint(point, event.latlng);
+        map.on("click", (e: { lngLat: { lat: number; lng: number }; point: { x: number; y: number } }) => {
+          selectEventsNearPoint(e.point, { lat: e.lngLat.lat, lng: e.lngLat.lng });
         });
 
         setMapReady(true);
-        setTimeout(() => {
-          map.invalidateSize();
-          requestDraw();
-        }, 150);
+        setTimeout(requestDraw, 150);
       })
       .catch(() => {
         setMapError("Map could not load. The event data is still available below.");
@@ -566,11 +552,12 @@ export default function MapPage() {
                   <button
                     key={event.id}
                     onClick={() => {
-                      const Lf = leafletRef.current;
                       const map = mapRef.current;
-                      if (!Lf || !map) return;
-                      map.flyTo(Lf.latLng(event.lat, event.lng), Math.max(map.getZoom(), 15), {
-                        duration: 0.45,
+                      if (!map) return;
+                      map.flyTo({
+                        center: [event.lng, event.lat],
+                        zoom: Math.max(map.getZoom(), 15),
+                        duration: 450,
                       });
                       setSelectedZone({
                         anchor: [event.lat, event.lng],

@@ -52,9 +52,11 @@ export default function BottomNav() {
     <nav
       className="fixed bottom-0 inset-x-0 z-50 border-t"
       style={{
-        borderColor: "var(--border)",
-        background: "rgba(12, 10, 14, 0.95)",
-        backdropFilter: "blur(20px)",
+        borderColor: "rgba(46, 31, 40, 0.6)",
+        background: "rgba(12, 10, 14, 0.82)",
+        backdropFilter: "blur(24px)",
+        WebkitBackdropFilter: "blur(24px)",
+        boxShadow: "0 -1px 0 rgba(255,255,255,0.04), 0 -8px 32px rgba(0,0,0,0.3)",
       }}
     >
       <div className="max-w-md mx-auto flex justify-around py-2.5">

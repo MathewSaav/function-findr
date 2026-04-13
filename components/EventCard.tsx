@@ -25,8 +25,11 @@ export default function EventCard({
     <div
       className="rounded-2xl overflow-hidden"
       style={{
-        background: "var(--bg-card)",
-        border: "1px solid var(--border)",
+        background: "rgba(26, 17, 24, 0.78)",
+        border: event.fire > 150 ? "1px solid rgba(220,39,67,0.3)" : "1px solid var(--border)",
+        boxShadow: "0 2px 8px rgba(0,0,0,0.18), 0 8px 32px rgba(0,0,0,0.12)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
         animation: `card-enter 0.4s ease-out ${index * 0.08}s both`,
       }}
     >

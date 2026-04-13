@@ -2,7 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { join } from "path";
 import { NextRequest, NextResponse } from "next/server";
 
-const DATA_PATH = join(process.cwd(), "signups.json");
+const DATA_PATH = join("/tmp", "signups.json");
 const MAX_EMAIL_LENGTH = 254;
 
 function normalizeEmail(value: unknown): string {
